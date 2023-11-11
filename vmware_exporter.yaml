@@ -1,0 +1,78 @@
+---
+# Source: lab-monitoring-chart/charts/vmware-exporter/templates/deployment.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vmware-cm
+data:
+  esx.yml: |
+    default:
+      vsphere_host: 10.98.0.7
+      vsphere_user: "anhnh@vsphere.local"
+      vsphere_password: "1234567"
+      ignore_ssl: True
+      specs_size: 5000
+      fetch_custom_attributes: True
+      fetch_tags: True
+      fetch_alarms: True
+      collect_only:
+          vms: True
+          vmguests: True
+          datastores: True
+          hosts: True
+          snapshots: True
+---
+# Source: lab-monitoring-chart/charts/vmware-exporter/templates/deployment.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: vmware
+spec:
+  selector:
+    app: vmware-deployment
+  ports:
+    - name: vmware-port
+      protocol: TCP
+      port: 9272
+      targetPort: 9272
+  type: ClusterIP
+---
+# Source: lab-monitoring-chart/charts/vmware-exporter/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: vmware-deployment
+  name: exporter-vmware
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vmware-deployment
+  template:
+    metadata:
+      labels:
+        app: vmware-deployment
+    spec:
+      containers:
+      - image: pryorda/vmware_exporter:latest
+        name: vmware-exporter
+        args: ["-c", "/opt/esx/esx.yml"]
+        volumeMounts:
+        - name: vmware-volume
+          mountPath: /opt/esx/esx.yml
+          subPath: esx.yml
+        resources:
+          requests:
+            cpu: 50m
+            memory: 50Mi
+          limits:
+            cpu: 500m
+            memory: 500Mi
+      volumes:
+        - name: vmware-volume
+          configMap:
+            name: vmware-cm
+            items:
+              - key: esx.yml
+                path: esx.yml

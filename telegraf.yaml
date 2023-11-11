@@ -1,0 +1,293 @@
+---
+# Source: lab-monitoring-chart/charts/telegraf/templates/deployment.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telegraf-cm
+data:
+  telegraf.conf: |
+    [agent]
+      interval = "10s"
+      round_interval = true
+      metric_batch_size = 50000
+      metric_buffer_limit = 1000000
+      collection_jitter = "0s"
+      flush_interval = "10s"
+      flush_jitter = "0s"
+      precision = "0s"
+      omit_hostname = false
+      hostname = ""
+
+    [[outputs.kafka]]
+      brokers = ["kafka-kafka-brokers:9092"]
+      topic = "test1"
+
+    [[inputs.http_listener_v2]]
+      service_address = ":8023"
+      paths = ["/receive"]
+      data_format = "prometheusremotewrite"
+---
+# Source: lab-monitoring-chart/charts/telegraf/templates/deployment.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: telegraf
+spec:
+  selector:
+    app: telegraf-deployment
+  ports:
+    - name: telegraf-port
+      protocol: TCP
+      port: 8023
+      targetPort: 8023
+  type: ClusterIP
+---
+# Source: lab-monitoring-chart/charts/telegraf/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: telegraf-deployment
+  name: telegraf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telegraf-deployment
+  template:
+    metadata:
+      labels:
+        app: telegraf-deployment
+    spec:
+      securityContext:
+        fsGroup: 0
+      initContainers:
+      - name: wait-for-kafka
+        image: busybox:1.33
+        command:
+          - /bin/sh
+          - -ec
+          - |
+              until nc -zvw5 kafka-kafka-brokers 9092; do echo "Waiting for Kafka..."; sleep 2; done
+      - name: wait-for-kafka-topic
+        image: quay.io/strimzi/kafka:0.36.1-kafka-3.5.1
+        command:
+          - /bin/sh
+          - -ec
+          - |
+              until bin/kafka-topics.sh --list --bootstrap-server kafka-kafka-bootstrap:9092 | grep test1; do echo "Waiting..."; sleep 2; done
+      containers:
+      - image: telegraf:1.27.0
+        name: telegraf
+        volumeMounts:
+        - name: telegraf-volume
+          mountPath: /etc/telegraf/telegraf.conf
+          subPath: telegraf.conf
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi          
+      volumes:
+      - name: telegraf-volume
+        configMap:
+          name: telegraf-cm
+          items:
+            - key: telegraf.conf
+              path: telegraf.conf
+---
+# Source: lab-monitoring-chart/charts/influxdb/templates/influxdb/statefulset-high-availability.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  #name: monitoring-influxdb
+  name: influxdb
+  labels:
+    app.kubernetes.io/name: influxdb
+    helm.sh/chart: influxdb-2.2.2
+    app.kubernetes.io/instance: monitoring
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: influxdb
+  annotations:
+    helm.sh/hook-weight: "9"
+spec:
+  serviceName: influxdb-headless
+  podManagementPolicy: OrderedReady
+  replicas: 3
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: influxdb
+      app.kubernetes.io/instance: monitoring
+      app.kubernetes.io/component: influxdb
+  template:
+    metadata:
+      labels:
+        
+        app.kubernetes.io/name: influxdb
+        helm.sh/chart: influxdb-2.2.2
+        app.kubernetes.io/instance: monitoring
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: influxdb
+    spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            
+            app.kubernetes.io/name: influxdb
+            helm.sh/chart: influxdb-2.2.2
+            app.kubernetes.io/instance: monitoring
+            app.kubernetes.io/managed-by: Helm
+            app.kubernetes.io/component: influxdb
+      
+      affinity:
+        podAffinity:
+          
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: influxdb
+                    app.kubernetes.io/instance: monitoring
+                    app.kubernetes.io/component: influxdb
+                namespaces:
+                  - "default"
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+        nodeAffinity:
+          
+      initContainers:
+        - name: init-chmod-data
+          image: docker.io/bitnami/bitnami-shell:10
+          imagePullPolicy: "Always"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              mkdir -p /bitnami/influxdb/{data,meta,wal}
+              chmod 700 /bitnami/influxdb/{data,meta,wal}
+              chmod g+w /bitnami/influxdb/
+                chown -R 1001:1001 /bitnami/influxdb/{data,meta,wal}
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: data
+              mountPath: /bitnami/influxdb
+      containers:
+        - name: influxdb
+          image: docker.io/bitnami/influxdb:2.7.1
+          imagePullPolicy: "IfNotPresent"
+          env:
+            - name: TZ
+              value: Asia/Ho_Chi_Minh
+            - name: BITNAMI_DEBUG
+              value: "true"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: INFLUXDB_HTTP_AUTH_ENABLED
+              value: "true"
+            - name: INFLUXDB_CREATE_USER_TOKEN
+              value: "no"
+            - name: INFLUXDB_ADMIN_USER
+              value: "admin"
+            - name: INFLUXDB_ADMIN_USER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: monitoring-influxdb
+                  key: admin-user-password
+            - name: INFLUXDB_ADMIN_USER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: monitoring-influxdb
+                  key: admin-user-token
+            - name: INFLUXDB_ADMIN_BUCKET
+              value: "telegraf"
+            - name: INFLUXDB_ADMIN_ORG
+              value: "asfsaf"
+            - name: INFLUXDB_USER
+              value: "asdfa"
+            - name: INFLUXDB_USER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: monitoring-influxdb
+                  key: user-password
+            - name: INFLUXDB_USER_BUCKET
+              value: "iasdf"
+            - name: INFLUXDB_USER_ORG
+              value: "asdfsf"
+            - name: INFLUXDB_DB
+              value: "iasdf"
+          ports:
+            - name: http
+              containerPort: 8086
+              protocol: TCP
+            - name: rpc
+              containerPort: 8088
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 180
+            periodSeconds: 45
+            successThreshold: 1
+            timeoutSeconds: 30
+            exec:
+              command:
+                - bash
+                - -c
+                - |
+                  . /opt/bitnami/scripts/libinfluxdb.sh
+
+                  influxdb_env
+                  export INFLUX_USERNAME="$INFLUXDB_ADMIN_USER"
+                  export INFLUX_PASSWORD="$INFLUXDB_ADMIN_USER_PASSWORD"
+                  
+                  timeout 29s influx ping --host http://$POD_IP:8086
+          readinessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 60
+            periodSeconds: 45
+            successThreshold: 1
+            timeoutSeconds: 30
+            exec:
+              command:
+                - bash
+                - -c
+                - |
+                  . /opt/bitnami/scripts/libinfluxdb.sh
+
+                  influxdb_env
+                  export INFLUX_USERNAME="$INFLUXDB_ADMIN_USER"
+                  export INFLUX_PASSWORD="$INFLUXDB_ADMIN_USER_PASSWORD"
+
+                  timeout 29s influx ping --host http://$POD_IP:8086
+          resources:
+            limits: {}
+            requests: {}
+          volumeMounts:
+            #- name: init-data
+            #  mountPath: /docker-entrypoint-initdb.d
+            - name: data
+              mountPath: "/bitnami/influxdb"
+      volumes:
+        - name: init-data
+          configMap:
+            name: cq-and-retention-policy
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: "8Gi"
+        storageClassName: local-path

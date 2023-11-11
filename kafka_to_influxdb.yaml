@@ -1,0 +1,52 @@
+---
+# Source: lab-monitoring-chart/charts/kafka_to_influxdb/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kafka-to-influxdb-deployment
+  name: kafka-to-influxdb
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kafka-to-influxdb-deployment
+  template:
+    metadata:
+      labels:
+        app: kafka-to-influxdb-deployment
+    spec:
+      securityContext:
+        fsGroup: 0
+      initContainers:
+      - name: wait-for-kafka
+        image: busybox:latest
+        command:
+          - /bin/sh
+          - -ec
+          - |
+              until nc -zvw5 kafka-kafka-brokers 9092; do echo "Waiting for Kafka..."; sleep 2; done
+      containers:
+      - image: hoanganht1k27/lab-monitoring-kafka-to-influxdb:1.0.0
+        imagePullPolicy: Always
+        name: kafka-to-influxdb
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "250Mi"
+          limits:
+            cpu: 2
+            memory: "2Gi"
+        env:
+          - name: INFLUXDB_BUCKET
+            value: telegraf
+          - name: INFLUXDB_ORG
+            value: asdfsadf
+          - name: INFLUXDB_TOKEN
+            value: sDQUzg2yzNmiRNXppIr0
+          - name: KAFKA_BOOTSTRAP_SERVERS
+            value: kafka-kafka-brokers:9092
+          - name: KAFKA_TOPIC
+            value: "test1"
+          - name: HEADLESS_SERVICE
+            value: influxdb-headless

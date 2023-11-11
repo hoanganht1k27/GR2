@@ -1,0 +1,66 @@
+---
+# Source: lab-monitoring-chart/charts/hostPathPV/templates/lab-monitoring-resources.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: default-lab-monitoring-resource-pv
+spec:
+  storageClassName: default-lab-monitoring-resource-hostpath
+  capacity:
+    # storage: 2Gi
+    storage: 500Mi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /opt/shared/default/lab-monitoring-resource
+    type: DirectoryOrCreate
+---
+# Source: lab-monitoring-chart/charts/hostPathPV/templates/prometheus-file-base-pv.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: default-prometheus-file-base-pv
+spec:
+  storageClassName: default-prometheus-file-base-hostpath
+  capacity:
+    # storage: 2Gi
+    storage: 500Mi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /opt/shared/default/prometheus-file-base
+    type: DirectoryOrCreate
+---
+# Source: lab-monitoring-chart/charts/sharedVolume/templates/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-file-base-pvc
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  # storageClassName: longhorn
+  storageClassName: default-prometheus-file-base-hostpath
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+---
+# Source: lab-monitoring-chart/charts/sharedVolume/templates/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lab-monitoring-resource-pvc
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  # storageClassName: longhorn
+  storageClassName: default-lab-monitoring-resource-hostpath
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi

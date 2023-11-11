@@ -1,0 +1,59 @@
+---
+# Source: lab-monitoring-chart/charts/pve-exporter/templates/deployment.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pve-cm
+data:
+  pve.yml: |
+    default:
+      user: prometheus@pve
+      password: juniper@123
+      verify_ssl: false
+---
+# Source: lab-monitoring-chart/charts/pve-exporter/templates/deployment.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: pve
+spec:
+  selector:
+    app: pve-deployment
+  ports:
+    - name: pve-port
+      protocol: TCP
+      port: 9221
+      targetPort: 9221
+  type: ClusterIP
+---
+# Source: lab-monitoring-chart/charts/pve-exporter/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: pve-deployment
+  name: exporter-pve
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pve-deployment
+  template:
+    metadata:
+      labels:
+        app: pve-deployment
+    spec:
+      containers:
+      - image: prompve/prometheus-pve-exporter:2.3
+        name: prometheus-pve-exporter
+        volumeMounts:
+        - name: pve-volume
+          mountPath: /etc/pve.yml
+          subPath: pve.yml
+      volumes:
+        - name: pve-volume
+          configMap:
+            name: pve-cm
+            items:
+              - key: pve.yml
+                path: pve.yml

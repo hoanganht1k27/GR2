@@ -1,0 +1,189 @@
+---
+# Source: lab-monitoring-chart/charts/proxy/templates/configmap-index.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monitoring-proxy-index
+  labels:
+    app.kubernetes.io/name: proxy
+    helm.sh/chart: proxy-1.0.0
+    app.kubernetes.io/instance: monitoring
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: proxy
+  annotations:
+    helm.sh/hook-weight: "-1"
+data:
+  index.html: "<!DOCTYPE html>\r\n<html>\r\n<head>\r\n<style>\r\n\r\n* {margin: 0; padding:
+    0;}\r\n\r\nbody {\r\n  background: #fafafa;\r\n}\r\n\r\ndiv {\r\n  margin: 20px;\r\n
+    \ display: block;\r\n  margin: 0 auto;\r\n  max-width: 25rem;\r\n  padding: 1rem;\r\n
+    \ background: white;\r\n}\r\n \r\nul {\r\n  list-style-type: none;\r\n  max-width:
+    25rem;\r\n\r\n}\r\n \r\nh3 {\r\n  font: bold 20px/1.5 Helvetica, Verdana, sans-serif;\r\n}\r\n
+    \r\nli img {\r\n  float: left;\r\n  margin: 0 15px 0 0;\r\n}\r\n \r\nli p {\r\n
+    \ font: 200 15px/1.5 Georgia, Times New Roman, serif;\r\n}\r\n \r\nli {\r\n  padding:
+    10px;\r\n  overflow: auto;\r\n}\r\n \r\nli:hover {\r\n  background: #eee;\r\n  cursor:
+    pointer;\r\n}\r\nh1 {\r\n  text-align: center;\r\n  padding-top: 25px;\r\n}\r\n\r\na:link
+    {\r\n  color: black;\r\n  background-color: transparent;\r\n  text-decoration: none;\r\n}\r\n\r\na:visited
+    {\r\n  color: black;\r\n  background-color: transparent;\r\n  text-decoration: none;\r\n}\r\n\r\na:hover
+    {\r\n  color: red;\r\n  background-color: transparent;\r\n  text-decoration: underline;\r\n}\r\n\r\na:active
+    {\r\n  color: #be0000;\r\n  background-color: transparent;\r\n  text-decoration:
+    underline;\r\n}\r\n\r\n</style>\r\n</head>\r\n<body>\r\n\r\n<h1>List Dashboards</h1>\r\n\r\n<div>\r\n
+    \ <ul>\r\n\r\n    <li>\r\n      <a href=\"/grafana\">\r\n        <img width=\"100\"
+    height=\"80\" src=\"./images/dashboard-svg-icon.png\" />\r\n        <h3>Grafana</h3>\r\n
+    \       <p>Graph, Metric Monitoring and Analytics</p>\r\n      </a>\r\n    </li>\r\n
+    \r\n    <li>\r\n      <a href=\"/prometheus\">\r\n        <img width=\"100\" height=\"80\"
+    src=\"./images/prometheus.png\" />\r\n        <h3>Prometheus</h3>\r\n        <p>Monitoring
+    system & Time series database</p>\r\n      </a>\r\n\r\n    </li>\r\n\r\n  </ul>\r\n</div>\r\n</body>\r\n</html>"
+---
+# Source: lab-monitoring-chart/charts/proxy/templates/configmap-proxy.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monitoring-proxy-config
+  labels:
+    app.kubernetes.io/name: proxy
+    helm.sh/chart: proxy-1.0.0
+    app.kubernetes.io/instance: monitoring
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: proxy
+  annotations:
+    helm.sh/hook-weight: "-1"
+data:
+  proxy.conf: |-
+    
+    server {
+        listen 8080;
+    
+        location /grafana {
+            rewrite  ^/grafana/(.*)  /$1 break;
+            proxy_pass http://grafana:3000;
+            proxy_set_header   Host   $host;
+            proxy_set_header   X-Real-IP  $remote_addr;
+            proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+        location /prometheus {
+            proxy_pass http://prometheus:9090;
+            proxy_set_header   Host   $host;
+            proxy_set_header   X-Real-IP  $remote_addr;
+            proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+        location /influxdb {
+            proxy_pass http://influxdb:8086;
+            proxy_set_header   Host   $host;
+            proxy_set_header   X-Real-IP  $remote_addr;
+            proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+    
+    }
+---
+# Source: lab-monitoring-chart/charts/proxy/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: proxy
+  labels:
+    app.kubernetes.io/name: proxy
+    helm.sh/chart: proxy-1.0.0
+    app.kubernetes.io/instance: monitoring
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    metallb.universe.tf/allow-shared-ip: default
+spec:
+  type: LoadBalancer
+  #
+  #
+  #
+  #
+  ports:
+    - name: proxy
+      port: 80
+      targetPort: proxy
+  selector:
+    app.kubernetes.io/name: proxy
+    app.kubernetes.io/instance: monitoring
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 7200
+---
+---
+# Source: lab-monitoring-chart/charts/proxy/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-proxy
+  labels:
+    app.kubernetes.io/name: proxy
+    helm.sh/chart: proxy-1.0.0
+    app.kubernetes.io/instance: monitoring
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: proxy
+  annotations:
+    helm.sh/hook-weight: "-1"
+spec:
+  replicas: 3
+  strategy:
+    type: 
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: proxy
+      app.kubernetes.io/instance: monitoring
+      app.kubernetes.io/component: proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: proxy
+        helm.sh/chart: proxy-1.0.0
+        app.kubernetes.io/instance: monitoring
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: proxy
+    spec:
+      affinity:
+        podAffinity:
+          
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: proxy
+                    app.kubernetes.io/instance: monitoring
+                namespaces:
+                  - "default"
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+        nodeAffinity:
+          
+
+      containers:
+        - name: proxy
+          image: docker.io/hoanganht1k27/lab-monitoring-proxy:1.0.0
+          imagePullPolicy: "IfNotPresent"
+          env:
+            - name: TZ
+              value: Asia/Ho_Chi_Minh
+
+          ports:
+            - name: proxy
+              containerPort: 8080
+          resources:
+            limits: {}
+            requests: {}
+          resources:
+            limits: {}
+            requests: {}
+
+          volumeMounts:
+            - name: proxy-index
+              mountPath: /app/index.html
+              subPath: index.html
+            - name: proxy-config
+              mountPath: /opt/bitnami/nginx/conf/server_blocks/proxy.conf
+              subPath: proxy.conf
+
+      volumes:
+        - name: proxy-index
+          configMap:
+            name: monitoring-proxy-index
+        - name: proxy-config
+          configMap:
+            name: monitoring-proxy-config

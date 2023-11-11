@@ -1,0 +1,113 @@
+---
+# Source: lab-monitoring-chart/charts/hostPathPV/templates/lab-monitoring-resources.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: default-lab-monitoring-resource-pv
+spec:
+  storageClassName: default-lab-monitoring-resource-hostpath
+  capacity:
+    # storage: 2Gi
+    storage: 500Mi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /opt/shared/default/lab-monitoring-resource
+    type: DirectoryOrCreate
+---
+# Source: lab-monitoring-chart/charts/hostPathPV/templates/prometheus-file-base-pv.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: default-prometheus-file-base-pv
+spec:
+  storageClassName: default-prometheus-file-base-hostpath
+  capacity:
+    # storage: 2Gi
+    storage: 500Mi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /opt/shared/default/prometheus-file-base
+    type: DirectoryOrCreate
+---
+# Source: lab-monitoring-chart/charts/sharedVolume/templates/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-file-base-pvc
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  # storageClassName: longhorn
+  storageClassName: default-prometheus-file-base-hostpath
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+---
+# Source: lab-monitoring-chart/charts/sharedVolume/templates/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lab-monitoring-resource-pvc
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  # storageClassName: longhorn
+  storageClassName: default-lab-monitoring-resource-hostpath
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+---
+# Source: lab-monitoring-chart/charts/grafana/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: grafana-deployment
+  name: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana-deployment
+  template:
+    metadata:
+      labels:
+        app: grafana-deployment
+    spec:
+      securityContext:
+        fsGroup: 0
+      initContainers:
+        - name: wait-for-mariadb
+          image: busybox:latest
+          imagePullPolicy: "IfNotPresent"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until nc -zvw5 10.98.100.107 3306; do echo "Waiting for MariaDB..."; sleep 2; done
+      containers:
+      - image: hoanganht1k27/lab_monitoring_grafana:v1.2.0
+        name: grafana
+        env:
+          - name: MYSQL_HOST
+            value: "10.98.100.107"
+          - name: MYSQL_PORT
+            value: "3306"
+          - name: MYSQL_DB
+            value: "grafana_lab_monitoring"
+          - name: MYSQL_USER
+            value: "lab_monitoring"
+          - name: MYSQL_PASSWORD
+            value: "asfsafsdfasf"
+          - name: ADMIN_USER
+            value: test
+          - name: ADMIN_PASSWORD
+            value: test
